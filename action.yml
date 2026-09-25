@@ -1,0 +1,93 @@
+name: 'RL Test'
+description: 'Run rl test on your repository using the RL language'
+author: 'MohamedGonem'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  version:
+    description: 'RL version: latest, nightly, or vX.Y.Z (e.g. v2.2.0). Defaults to the latest stable release.'
+    required: false
+    default: 'latest'
+  file:
+    description: 'Test file to run (e.g. tests.rl). Ignored if folder is set.'
+    required: false
+    default: ''
+  folder:
+    description: 'Folder to test (e.g. tests/). Runs rl test on every .rl file directly inside it.'
+    required: false
+    default: ''
+  match:
+    description: 'Only run tests whose name, group, or register contains PATTERN (passed as --match).'
+    required: false
+    default: ''
+  args:
+    description: 'Additional arguments to pass to rl test'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Working directory to run rl test in'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup RL
+      uses: rl-lang/rl-setup@main
+      with:
+        version: ${{ inputs.version }}
+        binaries: rl
+
+    - name: Run rl test
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        MATCH=""
+        if [ -n "${{ inputs.match }}" ]; then
+          MATCH="--match ${{ inputs.match }}"
+        fi
+        FOLDER="${{ inputs.folder }}"
+        FILE="${{ inputs.file }}"
+
+        if [ -n "$FOLDER" ]; then
+          if [ ! -d "$FOLDER" ]; then
+            echo "::error::Folder not found: $FOLDER"
+            exit 1
+          fi
+
+          echo "Testing all .rl files in $FOLDER"
+          cd "$FOLDER"
+
+          FAIL=0
+          COUNT=0
+          for f in *.rl; do
+            [ -e "$f" ] || continue
+            COUNT=$((COUNT+1))
+            echo "::group::rl test $f"
+            # shellcheck disable=SC2086
+            if rl test "$f" $MATCH ${{ inputs.args }}; then
+              echo "PASS $f"
+            else
+              echo "::error::rl test failed for $f"
+              FAIL=1
+            fi
+            echo "::endgroup::"
+          done
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No .rl files found in $FOLDER"
+            exit 1
+          fi
+
+          exit $FAIL
+        elif [ -n "$FILE" ]; then
+          echo "Running: rl test $FILE $MATCH ${{ inputs.args }}"
+          # shellcheck disable=SC2086
+          rl test "$FILE" $MATCH ${{ inputs.args }}
+        else
+          echo "::error::Must set either 'file' or 'folder'"
+          exit 1
+        fi
